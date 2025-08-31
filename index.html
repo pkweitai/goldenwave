@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>AI MegaCap Portfolio — $100K Dashboard</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
+<style>
+  :root{
+    --bg:#0b0f12;--card:#11171c;--muted:#77818b;--text:#e7eef5;--accent:#3da3ff;--danger:#ff5c7a;--ok:#33c48b;
+    --border:#1b2228;--chip:#0e1419;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif}
+  a{color:var(--accent);text-decoration:none}
+  .wrap{max-width:1200px;margin:32px auto;padding:0 16px}
+  header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .brand{display:flex;gap:12px;align-items:center}
+  .logo{width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#1f3b59,#0e2032);display:grid;place-items:center;border:1px solid var(--border)}
+  .logo b{color:#9ed0ff}
+  .tabs{display:flex;gap:6px;background:var(--chip);padding:6px;border:1px solid var(--border);border-radius:12px}
+  .tab{padding:8px 14px;border-radius:8px;color:var(--muted);cursor:pointer;font-weight:600}
+  .tab.active{background:var(--card);color:var(--text);border:1px solid var(--border)}
+  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+  h2{margin:0 0 10px 0;font-size:18px}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+  .kpi{background:var(--chip);border:1px solid var(--border);border-radius:12px;padding:12px}
+  .kpi .t{color:var(--muted);font-size:12px}
+  .kpi .v{font-size:20px;font-weight:700;margin-top:4px}
+  .pos{color:var(--ok)} .neg{color:var(--danger)}
+  table{width:100%;border-collapse:collapse}
+  th,td{border-bottom:1px solid var(--border);padding:10px 8px;text-align:left;font-size:14px;vertical-align:top}
+  th{color:#a8b3bd;font-weight:600}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid var(--border);border-radius:999px;background:#0c141a;color:#b8c3cc;font-size:12px;margin-right:6px;white-space:nowrap}
+  input,textarea,select,button{background:#0c141a;border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit}
+  textarea{width:100%;min-height:160px}
+  button{cursor:pointer;font-weight:700}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .muted{color:var(--muted);font-size:12px}
+  .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .spacer{height:10px}
+  .hidden{display:none}
+  footer{margin:24px 0;color:var(--muted);font-size:12px}
+  .alert{padding:10px 12px;border:1px dashed var(--border);border-radius:12px;background:#0d141a}
+  .badge{padding:2px 6px;border-radius:6px;background:#0f1d28;border:1px solid var(--border);color:#9ed0ff;font-size:11px;margin-left:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo"><b>AI</b></div>
+      <div>
+        <div style="font-weight:800;">AI MegaCap Portfolio</div>
+        <div class="muted">Public dashboard + admin (GitHub Pages)</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="dashboard">Dashboard</div>
+      <div class="tab" data-tab="admin">Admin</div>
+    </div>
+  </header>
+
+  <!-- KPIs -->
+  <div id="dashboard" class="page">
+    <div class="grid">
+      <div class="card">
+        <h2>Portfolio Overview</h2>
+        <div class="kpis" id="kpis">
+          <div class="kpi"><div class="t">Starting Capital</div><div class="v">$100,000</div></div>
+          <div class="kpi"><div class="t">Current Equity</div><div class="v" id="k_equity">$—</div></div>
+          <div class="kpi"><div class="t">Total P&L %</div><div class="v" id="k_return">—</div></div>
+          <div class="kpi"><div class="t">Cash (Implied)</div><div class="v" id="k_cash">$—</div></div>
+        </div>
+        <div class="spacer"></div>
+        <div class="alert">This dashboard computes daily equity from your uploaded snapshots in <code>/data/YYYY-MM-DD.json</code>. Prices are marked to that day’s <b>close</b> via Stooq (no API key). Cash is assumed as <code>$100k − Σ dollar_size of active BUYs</code> per day.</div>
+      </div>
+
+      <div class="card">
+        <h2>Equity Curve</h2>
+        <canvas id="equityChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="card">
+      <h2>Latest Snapshot</h2>
+      <div class="muted" id="latestMeta">Loading latest...</div>
+      <div class="spacer"></div>
+      <div class="flex">
+        <div class="pill">Stops active: <span id="stopsCount">—</span></div>
+        <div class="pill">Holdings: <span id="holdingsCount">—</span></div>
+        <div class="pill">Version date: <span id="latestDate">—</span></div>
+      </div>
+      <div class="spacer"></div>
+      <div style="overflow:auto;">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th>Ticker</th><th>Plan</th><th>Action</th><th>Shares</th>
+              <th>Entry</th><th>Stop</th><th>Live/Close</th>
+              <th>P&L $*</th><th>P&L %*</th>
+              <th>Key Factors</th><th>Risks</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="muted">* P&L is based on <i>current close</i> vs Entry for quick context only; official equity uses daily closes per snapshot date.</div>
+    </div>
+  </div>
+
+  <!-- ADMIN -->
+  <div id="admin" class="page hidden">
+    <div class="card">
+      <h2>Repository Settings</h2>
+      <div class="row">
+        <div>
+          <label>Owner</label>
+          <input id="gh_owner" placeholder="your-github-username"/>
+        </div>
+        <div>
+          <label>Repo</label>
+          <input id="gh_repo" placeholder="ai-megacap-portfolio"/>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Branch</label>
+          <input id="gh_branch" placeholder="main" />
+        </div>
+        <div>
+          <label>Data folder</label>
+          <input id="gh_path" placeholder="data" />
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Fine-grained token (stored locally)</label>
+          <input id="gh_token" type="password" placeholder="ghp_..." />
+        </div>
+        <div class="flex" style="align-items:end;">
+          <button id="saveCfg">Save Settings</button>
+          <button id="clrToken">Forget Token</button>
+          <span class="muted">Token scope: Repository → Contents: Read/Write (this repo only)</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Upload Daily JSON</h2>
+      <div class="row">
+        <div>
+          <label>Date (YYYY-MM-DD)</label>
+          <input id="snapDate" placeholder="2025-08-31" />
+        </div>
+        <div>
+          <label>Commit message</label>
+          <input id="commitMsg" placeholder="Add daily actions snapshot" />
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <label>Paste JSON array (exact schema from ChatGPT)</label>
+      <textarea id="jsonArea" placeholder='[{"ticker":"NVDA","plan":"A",...}]'></textarea>
+      <div class="spacer"></div>
+      <div class="flex">
+        <button id="btnUpload">Commit JSON to /data/DATE.json</button>
+        <button id="btnValidate">Validate JSON</button>
+        <span class="muted" id="uploadStatus"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Data Files in Repo</h2>
+      <div class="flex">
+        <button id="btnList">Refresh List</button>
+        <span class="muted">Lists <code>.json</code> under your data folder (branch: <span id="cfgBranch"></span>).</span>
+      </div>
+      <div id="fileList" class="spacer"></div>
+    </div>
+
+    <div class="card">
+      <h2>Rebalance Helper (Preview)</h2>
+      <div class="muted">Parses “BUY xx sh” from <b>Action</b> and compares vs dollar_size and a $100k budget. Produces a quick sanity check.</div>
+      <div class="spacer"></div>
+      <div class="flex">
+        <button id="btnRebalance">Run on JSON above</button>
+        <a id="dlOrders" class="pill" download="orders.csv" href="#">Download orders.csv</a>
+      </div>
+      <div id="rebalanceOut" class="spacer"></div>
+    </div>
+
+    <footer>
+      Your token is only stored in your browser (LocalStorage) and used directly with GitHub’s API. Clear it anytime with “Forget Token”.
+    </footer>
+  </div>
+</div>
+
+<script>
+/* ========= Utilities ========= */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const fmt = n => n==null || isNaN(n) ? "—" : Number(n).toLocaleString(undefined,{maximumFractionDigits:2});
+const START_CAPITAL = 100000;
+
+/* Tabs */
+$$('.tab').forEach(t => t.onclick = () => {
+  $$('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  const tab = t.dataset.tab;
+  $$('.page').forEach(p => p.classList.add('hidden'));
+  $('#'+tab).classList.remove('hidden');
+});
+
+/* ========= Config & Storage ========= */
+const cfg = {
+  owner: localStorage.getItem('gh_owner') || '',
+  repo: localStorage.getItem('gh_repo') || '',
+  branch: localStorage.getItem('gh_branch') || 'main',
+  path: localStorage.getItem('gh_path') || 'data',
+  token: localStorage.getItem('gh_token') || ''
+};
+function syncCfgToUI(){
+  $('#gh_owner').value = cfg.owner;
+  $('#gh_repo').value = cfg.repo;
+  $('#gh_branch').value = cfg.branch;
+  $('#gh_path').value = cfg.path;
+  $('#gh_token').value = cfg.token;
+  $('#cfgBranch').textContent = cfg.branch || '—';
+}
+function saveCfg(){
+  cfg.owner = $('#gh_owner').value.trim();
+  cfg.repo = $('#gh_repo').value.trim();
+  cfg.branch = $('#gh_branch').value.trim() || 'main';
+  cfg.path = $('#gh_path').value.trim() || 'data';
+  cfg.token = $('#gh_token').value.trim();
+  localStorage.setItem('gh_owner', cfg.owner);
+  localStorage.setItem('gh_repo', cfg.repo);
+  localStorage.setItem('gh_branch', cfg.branch);
+  localStorage.setItem('gh_path', cfg.path);
+  if(cfg.token) localStorage.setItem('gh_token', cfg.token);
+  syncCfgToUI();
+}
+$('#saveCfg').onclick = saveCfg;
+$('#clrToken').onclick = () => { localStorage.removeItem('gh_token'); cfg.token=''; $('#gh_token').value=''; };
+
+/* Default date = today (local) */
+(function(){
+  const d = new Date(); const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const dd=String(d.getDate()).padStart(2,'0');
+  $('#snapDate').value = `${y}-${m}-${dd}`;
+})();
+syncCfgToUI();
+
+/* ========= GitHub API ========= */
+function ghHeaders(){
+  const h = {'Accept':'application/vnd.github+json'};
+  if(cfg.token) h['Authorization'] = `Bearer ${cfg.token}`;
+  return h;
+}
+async function ghGetJSON(path){
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/${path}`;
+  const r = await fetch(url, {headers: ghHeaders()});
+  if(!r.ok) throw new Error(`GitHub GET ${path}: ${r.status}`);
+  return r.json();
+}
+async function ghGetContent(path){
+  // path like contents/data?ref=branch OR contents/data/2025-08-31.json?ref=branch
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${path}${path.includes('?')?'':'?ref='+encodeURIComponent(cfg.branch)}`;
+  const r = await fetch(url, {headers: ghHeaders()});
+  if(!r.ok) throw new Error(`GitHub contents GET ${path}: ${r.status}`);
+  return r.json();
+}
+function toB64(str){ return btoa(unescape(encodeURIComponent(str))); }
+async function ghCreateOrUpdateFile(filepath, contentStr, message){
+  // Check if file exists to include SHA for update
+  let sha = null;
+  try{
+    const meta = await ghGetContent(`${filepath}?ref=${encodeURIComponent(cfg.branch)}`);
+    sha = meta.sha || null;
+  }catch(e){ /* not found -> create */ }
+
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${filepath}`;
+  const body = {
+    message: message || `Update ${filepath}`,
+    content: toB64(contentStr),
+    branch: cfg.branch
+  };
+  if(sha) body.sha = sha;
+
+  const r = await fetch(url, {
+    method: 'PUT',
+    headers: {...ghHeaders(), 'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){
+    const txt = await r.text();
+    throw new Error(`GitHub PUT ${filepath}: ${r.status} ${txt}`);
+  }
+  return r.json();
+}
+
+/* ========= Admin: Upload daily JSON ========= */
+$('#btnValidate').onclick = () => {
+  try{
+    const arr = JSON.parse($('#jsonArea').value);
+    if(!Array.isArray(arr)) throw new Error('Top-level is not an array');
+    const sample = arr[0] || {};
+    const required = ["ticker","plan","action","timeframe","prediction_up","prediction_down","prob_up_pct","key_factors","risks"];
+    const missing = required.filter(k => !(k in sample));
+    if(missing.length) throw new Error('Missing fields (sample row): '+missing.join(', '));
+    $('#uploadStatus').textContent = 'Looks valid ✅';
+  }catch(e){
+    $('#uploadStatus').textContent = 'Invalid JSON: '+e.message;
+  }
+};
+$('#btnUpload').onclick = async () => {
+  try{
+    saveCfg();
+    if(!cfg.owner||!cfg.repo||!cfg.branch||!cfg.path||!cfg.token) throw new Error('Missing repo settings or token');
+    const date = $('#snapDate').value.trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Date should be YYYY-MM-DD');
+    const arr = JSON.parse($('#jsonArea').value);
+    const path = `${cfg.path.replace(/\/+$/,'')}/${date}.json`;
+    $('#uploadStatus').textContent = 'Uploading…';
+    await ghCreateOrUpdateFile(path, JSON.stringify(arr,null,2), $('#commitMsg').value.trim() || `Add snapshot ${date}`);
+    $('#uploadStatus').textContent = `Committed to ${path} ✅`;
+  }catch(e){
+    $('#uploadStatus').textContent = 'Upload failed: '+e.message;
+  }
+};
+
+/* ========= Admin: List data files ========= */
+$('#btnList').onclick = async () => {
+  try{
+    const meta = await ghGetContent(`${cfg.path}?ref=${encodeURIComponent(cfg.branch)}`);
+    const files = (Array.isArray(meta)?meta:[]).filter(x => x.type==='file' && x.name.endsWith('.json'))
+      .map(x => ({name:x.name, url:x.download_url}))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    let html = '<div class="flex">';
+    for(const f of files){
+      html += `<a class="pill" href="${f.url}" target="_blank" rel="noopener">${f.name}</a>`;
+    }
+    html += '</div>';
+    $('#fileList').innerHTML = html || '<div class="muted">No files yet.</div>';
+  }catch(e){
+    $('#fileList').innerHTML = `<div class="muted">Error: ${e.message}</div>`;
+  }
+};
+
+/* ========= Rebalance helper ========= */
+function sharesFromAction(action){
+  const m = /BUY\s+(\d+)\s*sh/i.exec(action||''); return m?+m[1]:0;
+}
+$('#btnRebalance').onclick = () => {
+  try{
+    const arr = JSON.parse($('#jsonArea').value);
+    let spent = 0, rows=[];
+    for(const o of arr){
+      const sh = sharesFromAction(o.action);
+      const cost = o.dollar_size || 0;
+      if(sh>0) spent += cost;
+      rows.push({ticker:o.ticker, sh, dollar_size: cost});
+    }
+    const cash = START_CAPITAL - spent;
+    let out = `<div class="alert">Budget check: Spent $${fmt(spent)} → Cash $${fmt(cash)} ${cash<0?'<b class="neg">(oversized)</b>':''}</div>`;
+    out += '<table><thead><tr><th>Ticker</th><th>Shares</th><th>Dollar Size</th></tr></thead><tbody>';
+    for(const r of rows){ out += `<tr><td>${r.ticker||''}</td><td>${r.sh}</td><td>$${fmt(r.dollar_size)}</td></tr>`; }
+    out += '</tbody></table>';
+    $('#rebalanceOut').innerHTML = out;
+
+    // orders.csv
+    const csv = ['Ticker,Shares,Instruction','']
+      .concat(rows.filter(r=>r.sh>0).map(r => `${r.ticker},${r.sh},BUY MARKET`)).join('\n');
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    $('#dlOrders').href = url;
+
+  }catch(e){
+    $('#rebalanceOut').innerHTML = `<div class="muted">Error: ${e.message}</div>`;
+  }
+};
+
+/* ========= Dashboard: Data loading & Equity curve ========= */
+// Map US tickers -> Stooq symbol (simple heuristic)
+function stooqSym(t){
+  t = (t||'').toUpperCase();
+  if(t==='BRK.B') return 'brk-b.us';
+  if(t==='BRK.A') return 'brk-a.us';
+  return `${t.toLowerCase()}.us`;
+}
+// Fetch daily CSV from Stooq and cache in-memory
+const priceCache = new Map();
+async function fetchHistory(sym){
+  if(priceCache.has(sym)) return priceCache.get(sym);
+  const url = `https://stooq.com/q/d/l/?s=${encodeURIComponent(sym)}&i=d`;
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(`Stooq ${sym} ${r.status}`);
+  const csv = await r.text();
+  const rows = csv.trim().split(/\r?\n/).slice(1).map(line=>{
+    const [date,open,high,low,close,vol] = line.split(',');
+    return {date, close: parseFloat(close)};
+  });
+  priceCache.set(sym, rows);
+  return rows;
+}
+function closeOn(history, isoDate){
+  // Find the last available close <= isoDate
+  let last = null;
+  for(const row of history){ if(row.date<=isoDate) last=row; else break; }
+  return last ? last.close : null;
+}
+function extractHoldings(arr){
+  return arr.filter(o => sharesFromAction(o.action)>0).map(o => ({
+    ticker:o.ticker, shares: sharesFromAction(o.action), entry:o.entry_limit||null, stop:o.hard_stop||null,
+    key_factors:o.key_factors||[], risks:o.risks||[]
+  }));
+}
+function sumDollarSize(arr){
+  return arr.reduce((s,o)=> s + (sharesFromAction(o.action)>0 ? (o.dollar_size||0):0), 0);
+}
+
+async function loadAllSnapshotsAndRender(){
+  try{
+    if(!cfg.owner||!cfg.repo||!cfg.branch||!cfg.path){
+      $('#latestMeta').textContent = 'Configure repo in Admin first.';
+      return;
+    }
+    // 1) List data files
+    const list = await ghGetContent(`${cfg.path}?ref=${encodeURIComponent(cfg.branch)}`);
+    const files = (Array.isArray(list)?list:[])
+      .filter(x=>x.type==='file' && x.name.endsWith('.json'))
+      .map(x=>({date: x.name.replace('.json',''), url:x.download_url}))
+      .sort((a,b)=>a.date.localeCompare(b.date));
+    if(files.length===0){
+      $('#latestMeta').textContent = 'No snapshots found.';
+      return;
+    }
+
+    // 2) Load each JSON and compute day equity
+    const points = []; const warnings = [];
+    for(const f of files){
+      const resp = await fetch(f.url); const arr = await resp.json();
+      const holds = extractHoldings(arr);
+      const cash = START_CAPITAL - sumDollarSize(arr);
+
+      let mv = 0;
+      for(const h of holds){
+        const sym = stooqSym(h.ticker);
+        try{
+          const hist = await fetchHistory(sym);
+          const px = closeOn(hist, f.date);
+          if(px==null){ warnings.push(`No price for ${h.ticker} on ${f.date}`); continue; }
+          mv += h.shares * px;
+        }catch(e){ warnings.push(`Price error ${h.ticker}: ${e.message}`); }
+      }
+      const equity = mv + cash;
+      points.push({x:f.date, y: equity, file:f});
+    }
+
+    // 3) Render chart + KPIs using last point
+    const last = points[points.length-1];
+    $('#k_equity').textContent = '$'+fmt(last?.y||0);
+    const ret = last ? (last.y/START_CAPITAL - 1) : 0;
+    $('#k_return').innerHTML = (ret>=0?'<span class="pos">':'<span class="neg">') + (ret*100).toFixed(2)+'%</span>';
+    const lastJson = await (await fetch(files[files.length-1].url)).json();
+    const cashImplied = START_CAPITAL - sumDollarSize(lastJson);
+    $('#k_cash').textContent = '$'+fmt(cashImplied);
+
+    // Chart
+    const ctx = document.getElementById('equityChart');
+    const chart = new Chart(ctx, {
+      type:'line',
+      data:{
+        datasets:[{
+          label:'Equity ($)',
+          data: points,
+          borderWidth:2,
+          tension:0.2,
+          pointRadius:0
+        }]
+      },
+      options:{
+        scales:{
+          x:{type:'time',time:{parser:'YYYY-MM-DD',tooltipFormat:'YYYY-MM-DD',unit:'day'},grid:{color:'#1b2228'},ticks:{color:'#9db0bf'}},
+          y:{grid:{color:'#1b2228'},ticks:{color:'#9db0bf'}}
+        },
+        plugins:{
+          legend:{labels:{color:'#9db0bf'}},
+          tooltip:{callbacks:{label:(ctx)=>'$'+fmt(ctx.parsed.y)}}
+        }
+      }
+    });
+
+    // 4) Render latest table with quick P&L vs Entry
+    $('#latestDate').textContent = files[files.length-1].date;
+    const latestArr = lastJson;
+    const holds = extractHoldings(latestArr);
+    $('#holdingsCount').textContent = holds.length;
+    const tbody = $('#tbl tbody'); tbody.innerHTML = '';
+    let stopAlerts = 0;
+    for(const o of latestArr){
+      const sh = sharesFromAction(o.action);
+      const sym = stooqSym(o.ticker);
+      let live = null;
+      try{
+        const hist = await fetchHistory(sym);
+        live = hist.length? hist[hist.length-1].close : null;
+      }catch(e){}
+      let pnl$ = null, pnlPct = null;
+      if(sh>0 && live!=null && o.entry_limit){
+        pnl$ = (live - o.entry_limit) * sh;
+        pnlPct = (live / o.entry_limit - 1) * 100;
+      }
+      const stopHit = (o.hard_stop && live!=null && live <= o.hard_stop);
+      if(stopHit) stopAlerts++;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><b>${o.ticker||''}</b></td>
+        <td>${o.plan||''}</td>
+        <td>${o.action||''}</td>
+        <td>${sh||''}</td>
+        <td>${o.entry_limit??''}</td>
+        <td>${o.hard_stop??''} ${stopHit?'<span class="badge">⚠ stop</span>':''}</td>
+        <td>${live==null?'—':live.toFixed(2)}</td>
+        <td class="${pnl$==null?'':(pnl$>=0?'pos':'neg')}">${pnl$==null?'—':'$'+fmt(pnl$)}</td>
+        <td class="${pnlPct==null?'':(pnlPct>=0?'pos':'neg')}">${pnlPct==null?'—':pnlPct.toFixed(2)+'%'}</td>
+        <td>${(o.key_factors||[]).map(s=>`<span class="pill">${s}</span>`).join(' ')}</td>
+        <td>${(o.risks||[]).map(s=>`<span class="pill">${s}</span>`).join(' ')}</td>
+      `;
+      tbody.appendChild(tr);
+    }
+    $('#stopsCount').textContent = stopAlerts.toString();
+    $('#latestMeta').textContent = `Loaded ${files.length} snapshots from /${cfg.path}.`;
+
+  }catch(e){
+    console.error(e);
+    $('#latestMeta').textContent = 'Error loading data: '+e.message;
+  }
+}
+
+/* Initial load on Dashboard view */
+loadAllSnapshotsAndRender();
+</script>
+</body>
+</html>
